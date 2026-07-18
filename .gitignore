@@ -1,0 +1,5 @@
+.DS_Store
+
+# Local backup of nested repositories that were absorbed into this repo.
+.git.disabled-local-backup/
+**/.git.disabled-local-backup/
