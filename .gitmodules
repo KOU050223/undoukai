@@ -1,0 +1,3 @@
+[submodule "ChairGame"]
+	path = ChairGame
+	url = git@github.com:ruirui23/ChairGame.git
