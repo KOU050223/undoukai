@@ -26,8 +26,16 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         [SerializeField, Min(0.02f)] private float m_watermelonBeepDuration = 0.12f;
         [SerializeField, Min(20f)] private float m_watermelonBeepFrequency = 880f;
         [SerializeField, Range(0f, 1f)] private float m_watermelonBeepVolume = 0.8f;
-        [SerializeField, Min(0.1f)] private float m_watermelonAudioMinDistance = 0.2f;
-        [SerializeField, Min(0.1f)] private float m_watermelonAudioMaxDistance = 8f;
+        [SerializeField, Range(0f, 1f)] private float m_watermelonSpatialBlend = 0.9f;
+        [SerializeField, Min(0.1f)] private float m_watermelonDirectionCueDistance = 1.5f;
+        [SerializeField, Range(0f, 1f)] private float m_watermelonStereoPanAssist = 0.8f;
+        [SerializeField, Min(0.1f)] private float m_watermelonAudioMinDistance = 1.5f;
+        [SerializeField, Min(0.1f)] private float m_watermelonAudioMaxDistance = 4f;
+        [SerializeField] private bool m_enableWatermelonDirectionSpeech = true;
+        [SerializeField, Min(0.5f)] private float m_watermelonSpeechInterval = 1.5f;
+        [SerializeField, Range(0.5f, 2f)] private float m_watermelonSpeechRate = 1.15f;
+        [SerializeField, Range(0.1f, 0.9f)] private float m_watermelonFrontBackThreshold = 0.35f;
+        [SerializeField, Range(0.1f, 0.9f)] private float m_watermelonLeftRightThreshold = 0.35f;
         [Space(10)]
         public UnityEvent<int> OnObjectsIdentified;
 
@@ -38,6 +46,10 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         private AudioSource m_watermelonAudioSource;
         private AudioClip m_watermelonBeepClip;
         private float m_nextWatermelonBeepTime;
+        private readonly Dictionary<string, AudioClip> m_watermelonDirectionVoiceClips = new();
+        private DirectionSpeech m_watermelonDirectionSpeech;
+        private float m_nextWatermelonSpeechTime;
+        private string m_lastWatermelonDirectionName;
 
         private void Awake()
         {
@@ -45,10 +57,13 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             OVRManager.TrackingLost += OnTrackingLost;
             OVRManager.TrackingAcquired += OnTrackingAcquired;
             SetupWatermelonDirectionAudio();
+            LoadWatermelonDirectionVoiceClips();
+            m_watermelonDirectionSpeech = new DirectionSpeech(m_watermelonSpeechRate);
         }
 
         private void OnDestroy()
         {
+            m_watermelonDirectionSpeech?.Shutdown();
             EraseSpatialAnchor();
             OVRManager.TrackingLost -= OnTrackingLost;
             OVRManager.TrackingAcquired -= OnTrackingAcquired;
@@ -93,9 +108,12 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             m_watermelonAudioSource = audioObject.AddComponent<AudioSource>();
             m_watermelonAudioSource.playOnAwake = false;
             m_watermelonAudioSource.loop = false;
-            m_watermelonAudioSource.spatialBlend = 1f;
+            m_watermelonAudioSource.spatialBlend = m_watermelonSpatialBlend;
             m_watermelonAudioSource.rolloffMode = AudioRolloffMode.Linear;
             m_watermelonAudioSource.dopplerLevel = 0f;
+            m_watermelonAudioSource.spread = 0f;
+            m_watermelonAudioSource.priority = 32;
+            m_watermelonAudioSource.reverbZoneMix = 0f;
             m_watermelonAudioSource.minDistance = m_watermelonAudioMinDistance;
             m_watermelonAudioSource.maxDistance = m_watermelonAudioMaxDistance;
             m_watermelonAudioSource.volume = m_watermelonBeepVolume;
@@ -105,7 +123,10 @@ namespace PassthroughCameraSamples.MultiObjectDetection
 
         private void UpdateWatermelonDirectionAudio()
         {
-            if (!m_enableWatermelonDirectionAudio || !m_isStarted || m_uiInference == null || m_watermelonAudioSource == null)
+            if ((!m_enableWatermelonDirectionAudio && !m_enableWatermelonDirectionSpeech) ||
+                !m_isStarted ||
+                m_uiInference == null ||
+                m_watermelonAudioSource == null)
             {
                 return;
             }
@@ -114,15 +135,38 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             if (target == null)
             {
                 m_nextWatermelonBeepTime = Time.time;
+                m_nextWatermelonSpeechTime = Time.time;
+                m_lastWatermelonDirectionName = null;
                 return;
             }
 
-            m_watermelonAudioSource.transform.position = target.BoxRectTransform.position;
+            var listenerTransform = GetListenerTransform();
+            var listenerPosition = listenerTransform != null ? listenerTransform.position : transform.position;
+            var direction = target.BoxRectTransform.position - listenerPosition;
+            if (direction.sqrMagnitude < 0.0001f)
+            {
+                direction = listenerTransform != null ? listenerTransform.forward : transform.forward;
+            }
+
+            direction.Normalize();
+            m_watermelonAudioSource.transform.position = listenerPosition + direction * m_watermelonDirectionCueDistance;
+            m_watermelonAudioSource.spatialBlend = m_watermelonSpatialBlend;
             m_watermelonAudioSource.minDistance = m_watermelonAudioMinDistance;
             m_watermelonAudioSource.maxDistance = m_watermelonAudioMaxDistance;
             m_watermelonAudioSource.volume = m_watermelonBeepVolume;
+            m_watermelonAudioSource.panStereo = GetStereoPanAssist(direction, listenerTransform);
+            var spokeDirection = SpeakWatermelonDirection(direction, listenerTransform);
 
-            if (Time.time >= m_nextWatermelonBeepTime)
+            if (!m_enableWatermelonDirectionAudio)
+            {
+                return;
+            }
+
+            if (spokeDirection)
+            {
+                m_nextWatermelonBeepTime = Time.time + m_watermelonBeepInterval;
+            }
+            else if (Time.time >= m_nextWatermelonBeepTime)
             {
                 m_watermelonAudioSource.PlayOneShot(m_watermelonBeepClip, m_watermelonBeepVolume);
                 m_nextWatermelonBeepTime = Time.time + m_watermelonBeepInterval;
@@ -133,7 +177,8 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         {
             SentisInferenceUiManager.BoundingBoxData closest = null;
             var closestDistanceSqr = float.PositiveInfinity;
-            var listenerPosition = GetListenerPosition();
+            var listenerTransform = GetListenerTransform();
+            var listenerPosition = listenerTransform != null ? listenerTransform.position : transform.position;
 
             foreach (var box in m_uiInference.m_boxDrawn)
             {
@@ -153,10 +198,104 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             return closest;
         }
 
-        private Vector3 GetListenerPosition()
+        private static Transform GetListenerTransform()
         {
-            var listener = FindFirstObjectByType<AudioListener>();
-            return listener != null ? listener.transform.position : Camera.main != null ? Camera.main.transform.position : transform.position;
+            var listener = UnityEngine.Object.FindFirstObjectByType<AudioListener>();
+            return listener != null ? listener.transform : Camera.main != null ? Camera.main.transform : null;
+        }
+
+        private float GetStereoPanAssist(Vector3 worldDirection, Transform listenerTransform)
+        {
+            if (listenerTransform == null)
+            {
+                return 0f;
+            }
+
+            var localDirection = listenerTransform.InverseTransformDirection(worldDirection);
+            return Mathf.Clamp(localDirection.x, -1f, 1f) * m_watermelonStereoPanAssist;
+        }
+
+        private bool SpeakWatermelonDirection(Vector3 worldDirection, Transform listenerTransform)
+        {
+            if (!m_enableWatermelonDirectionSpeech || listenerTransform == null)
+            {
+                return false;
+            }
+
+            var directionName = GetJapaneseDirectionName(listenerTransform.InverseTransformDirection(worldDirection));
+            if (directionName == m_lastWatermelonDirectionName && Time.time < m_nextWatermelonSpeechTime)
+            {
+                return false;
+            }
+
+            if (directionName != m_lastWatermelonDirectionName || Time.time >= m_nextWatermelonSpeechTime)
+            {
+                if (TryPlayWatermelonDirectionVoice(directionName) || m_watermelonDirectionSpeech.Speak($"{directionName}です"))
+                {
+                    m_lastWatermelonDirectionName = directionName;
+                    m_nextWatermelonSpeechTime = Time.time + m_watermelonSpeechInterval;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private string GetJapaneseDirectionName(Vector3 localDirection)
+        {
+            var horizontal = localDirection.x;
+            var forward = localDirection.z;
+
+            if (Mathf.Abs(horizontal) >= m_watermelonLeftRightThreshold &&
+                Mathf.Abs(forward) >= m_watermelonFrontBackThreshold)
+            {
+                var side = horizontal < 0f ? "左" : "右";
+                var depth = forward >= 0f ? "前" : "後ろ";
+                return $"{side}{depth}";
+            }
+
+            if (Mathf.Abs(horizontal) > Mathf.Abs(forward))
+            {
+                return horizontal < 0f ? "左" : "右";
+            }
+
+            return forward >= 0f ? "前" : "後ろ";
+        }
+
+        private void LoadWatermelonDirectionVoiceClips()
+        {
+            AddDirectionVoiceClip("前", "front_voice");
+            AddDirectionVoiceClip("後ろ", "back_voice");
+            AddDirectionVoiceClip("左", "left_voice");
+            AddDirectionVoiceClip("右", "right_voice");
+            AddDirectionVoiceClip("左前", "front_left_voice");
+            AddDirectionVoiceClip("右前", "front_right_voice");
+            AddDirectionVoiceClip("左後ろ", "back_left_voice");
+            AddDirectionVoiceClip("右後ろ", "back_right_voice");
+
+            void AddDirectionVoiceClip(string directionName, string resourceName)
+            {
+                var clip = Resources.Load<AudioClip>($"WatermelonDirectionVoice/{resourceName}");
+                if (clip == null)
+                {
+                    Debug.LogWarning($"Watermelon direction voice clip is missing: {resourceName}");
+                    return;
+                }
+
+                m_watermelonDirectionVoiceClips[directionName] = clip;
+            }
+        }
+
+        private bool TryPlayWatermelonDirectionVoice(string directionName)
+        {
+            if (m_watermelonAudioSource == null ||
+                !m_watermelonDirectionVoiceClips.TryGetValue(directionName, out var clip))
+            {
+                return false;
+            }
+
+            m_watermelonAudioSource.PlayOneShot(clip, m_watermelonBeepVolume);
+            return true;
         }
 
         private bool IsWatermelon(string className)
@@ -183,6 +322,151 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             clip.SetData(samples, 0);
             return clip;
         }
+
+        private sealed class DirectionSpeech
+        {
+#if UNITY_ANDROID && !UNITY_EDITOR
+            private readonly AndroidTextToSpeech m_androidTextToSpeech;
+#endif
+
+            public DirectionSpeech(float speechRate)
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                m_androidTextToSpeech = new AndroidTextToSpeech(speechRate);
+#endif
+            }
+
+            public bool Speak(string text)
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                return m_androidTextToSpeech.Speak(text);
+#else
+                Debug.Log($"Watermelon direction: {text}");
+                return true;
+#endif
+            }
+
+            public void Shutdown()
+            {
+#if UNITY_ANDROID && !UNITY_EDITOR
+                m_androidTextToSpeech.Shutdown();
+#endif
+            }
+        }
+
+#if UNITY_ANDROID && !UNITY_EDITOR
+        private sealed class AndroidTextToSpeech : AndroidJavaProxy
+        {
+            private AndroidJavaObject m_textToSpeech;
+            private AndroidJavaObject m_activity;
+            private readonly float m_speechRate;
+            private bool m_isReady;
+            private string m_pendingText;
+
+            public AndroidTextToSpeech(float speechRate) : base("android.speech.tts.TextToSpeech$OnInitListener")
+            {
+                m_speechRate = speechRate;
+                try
+                {
+                    using var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer");
+                    m_activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                    m_activity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
+                    {
+                        m_textToSpeech = new AndroidJavaObject("android.speech.tts.TextToSpeech", m_activity, this);
+                    }));
+                }
+                catch (System.Exception exception)
+                {
+                    Debug.LogWarning($"TextToSpeech initialization failed: {exception.Message}");
+                }
+            }
+
+            public void onInit(int status)
+            {
+                const int success = 0;
+                if (status != success || m_textToSpeech == null)
+                {
+                    Debug.LogWarning($"TextToSpeech is not ready. status:{status}");
+                    return;
+                }
+
+                try
+                {
+                    using var locale = new AndroidJavaClass("java.util.Locale").GetStatic<AndroidJavaObject>("JAPANESE");
+                    var languageResult = m_textToSpeech.Call<int>("setLanguage", locale);
+                    m_textToSpeech.Call<int>("setSpeechRate", m_speechRate);
+                    m_isReady = true;
+                    Debug.Log($"TextToSpeech is ready. languageResult:{languageResult}");
+
+                    if (!string.IsNullOrEmpty(m_pendingText))
+                    {
+                        var pendingText = m_pendingText;
+                        m_pendingText = null;
+                        Speak(pendingText);
+                    }
+                }
+                catch (System.Exception exception)
+                {
+                    Debug.LogWarning($"TextToSpeech language setup failed: {exception.Message}");
+                }
+            }
+
+            public bool Speak(string text)
+            {
+                if (!m_isReady || m_textToSpeech == null)
+                {
+                    m_pendingText = text;
+                    return false;
+                }
+
+                try
+                {
+                    m_activity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
+                    {
+                        using var parameters = new AndroidJavaObject("android.os.Bundle");
+                        m_textToSpeech.Call<int>("speak", text, 0, parameters, "watermelon_direction");
+                    }));
+                    return true;
+                }
+                catch (System.Exception exception)
+                {
+                    Debug.LogWarning($"TextToSpeech speak failed: {exception.Message}");
+                    return false;
+                }
+            }
+
+            public void Shutdown()
+            {
+                if (m_textToSpeech == null)
+                {
+                    return;
+                }
+
+                var textToSpeech = m_textToSpeech;
+                m_textToSpeech = null;
+                m_isReady = false;
+                m_pendingText = null;
+
+                if (m_activity != null)
+                {
+                    m_activity.Call("runOnUiThread", new AndroidJavaRunnable(() =>
+                    {
+                        textToSpeech.Call("stop");
+                        textToSpeech.Call("shutdown");
+                        textToSpeech.Dispose();
+                    }));
+                    m_activity.Dispose();
+                    m_activity = null;
+                }
+                else
+                {
+                    textToSpeech.Call("stop");
+                    textToSpeech.Call("shutdown");
+                    textToSpeech.Dispose();
+                }
+            }
+        }
+#endif
 
         private IEnumerator UpdateSpatialAnchor()
         {
