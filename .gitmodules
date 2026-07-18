@@ -1,3 +1,6 @@
 [submodule "ChairGame"]
 	path = ChairGame
 	url = git@github.com:ruirui23/ChairGame.git
+[submodule "web-compiler"]
+	path = web-compiler
+	url = https://github.com/scolor-dev/web-compiler
