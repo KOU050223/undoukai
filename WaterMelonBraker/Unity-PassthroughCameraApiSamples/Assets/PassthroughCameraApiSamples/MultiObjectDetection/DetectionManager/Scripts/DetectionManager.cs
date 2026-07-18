@@ -18,6 +18,16 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         [SerializeField] private DetectionSpawnMarkerAnim m_spawnMarker;
 
         [SerializeField] private SentisInferenceUiManager m_uiInference;
+
+        [Header("Watermelon direction audio")]
+        [SerializeField] private bool m_enableWatermelonDirectionAudio = true;
+        [SerializeField] private string m_watermelonClassName = "watermelon";
+        [SerializeField, Min(0.05f)] private float m_watermelonBeepInterval = 0.6f;
+        [SerializeField, Min(0.02f)] private float m_watermelonBeepDuration = 0.12f;
+        [SerializeField, Min(20f)] private float m_watermelonBeepFrequency = 880f;
+        [SerializeField, Range(0f, 1f)] private float m_watermelonBeepVolume = 0.8f;
+        [SerializeField, Min(0.1f)] private float m_watermelonAudioMinDistance = 0.2f;
+        [SerializeField, Min(0.1f)] private float m_watermelonAudioMaxDistance = 8f;
         [Space(10)]
         public UnityEvent<int> OnObjectsIdentified;
 
@@ -25,12 +35,16 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         private bool m_isStarted;
         internal OVRSpatialAnchor m_spatialAnchor;
         private bool m_isHeadsetTracking;
+        private AudioSource m_watermelonAudioSource;
+        private AudioClip m_watermelonBeepClip;
+        private float m_nextWatermelonBeepTime;
 
         private void Awake()
         {
             StartCoroutine(UpdateSpatialAnchor());
             OVRManager.TrackingLost += OnTrackingLost;
             OVRManager.TrackingAcquired += OnTrackingAcquired;
+            SetupWatermelonDirectionAudio();
         }
 
         private void OnDestroy()
@@ -67,6 +81,107 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             {
                 CleanMarkers();
             }
+
+            UpdateWatermelonDirectionAudio();
+        }
+
+        private void SetupWatermelonDirectionAudio()
+        {
+            var audioObject = new GameObject("WatermelonDirectionAudio");
+            audioObject.transform.SetParent(transform, false);
+
+            m_watermelonAudioSource = audioObject.AddComponent<AudioSource>();
+            m_watermelonAudioSource.playOnAwake = false;
+            m_watermelonAudioSource.loop = false;
+            m_watermelonAudioSource.spatialBlend = 1f;
+            m_watermelonAudioSource.rolloffMode = AudioRolloffMode.Linear;
+            m_watermelonAudioSource.dopplerLevel = 0f;
+            m_watermelonAudioSource.minDistance = m_watermelonAudioMinDistance;
+            m_watermelonAudioSource.maxDistance = m_watermelonAudioMaxDistance;
+            m_watermelonAudioSource.volume = m_watermelonBeepVolume;
+            m_watermelonAudioSource.clip = CreateBeepClip(m_watermelonBeepFrequency, m_watermelonBeepDuration);
+            m_watermelonBeepClip = m_watermelonAudioSource.clip;
+        }
+
+        private void UpdateWatermelonDirectionAudio()
+        {
+            if (!m_enableWatermelonDirectionAudio || !m_isStarted || m_uiInference == null || m_watermelonAudioSource == null)
+            {
+                return;
+            }
+
+            var target = GetClosestWatermelonBox();
+            if (target == null)
+            {
+                m_nextWatermelonBeepTime = Time.time;
+                return;
+            }
+
+            m_watermelonAudioSource.transform.position = target.BoxRectTransform.position;
+            m_watermelonAudioSource.minDistance = m_watermelonAudioMinDistance;
+            m_watermelonAudioSource.maxDistance = m_watermelonAudioMaxDistance;
+            m_watermelonAudioSource.volume = m_watermelonBeepVolume;
+
+            if (Time.time >= m_nextWatermelonBeepTime)
+            {
+                m_watermelonAudioSource.PlayOneShot(m_watermelonBeepClip, m_watermelonBeepVolume);
+                m_nextWatermelonBeepTime = Time.time + m_watermelonBeepInterval;
+            }
+        }
+
+        private SentisInferenceUiManager.BoundingBoxData GetClosestWatermelonBox()
+        {
+            SentisInferenceUiManager.BoundingBoxData closest = null;
+            var closestDistanceSqr = float.PositiveInfinity;
+            var listenerPosition = GetListenerPosition();
+
+            foreach (var box in m_uiInference.m_boxDrawn)
+            {
+                if (!IsWatermelon(box.ClassName))
+                {
+                    continue;
+                }
+
+                var distanceSqr = (box.BoxRectTransform.position - listenerPosition).sqrMagnitude;
+                if (distanceSqr < closestDistanceSqr)
+                {
+                    closestDistanceSqr = distanceSqr;
+                    closest = box;
+                }
+            }
+
+            return closest;
+        }
+
+        private Vector3 GetListenerPosition()
+        {
+            var listener = FindFirstObjectByType<AudioListener>();
+            return listener != null ? listener.transform.position : Camera.main != null ? Camera.main.transform.position : transform.position;
+        }
+
+        private bool IsWatermelon(string className)
+        {
+            return !string.IsNullOrEmpty(className) &&
+                   className.IndexOf(m_watermelonClassName, System.StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static AudioClip CreateBeepClip(float frequency, float duration)
+        {
+            const int sampleRate = 44100;
+            var sampleCount = Mathf.Max(1, Mathf.CeilToInt(sampleRate * duration));
+            var samples = new float[sampleCount];
+
+            for (var i = 0; i < sampleCount; i++)
+            {
+                var time = (float)i / sampleRate;
+                var fadeIn = Mathf.Clamp01(time / 0.01f);
+                var fadeOut = Mathf.Clamp01((duration - time) / 0.02f);
+                samples[i] = Mathf.Sin(2f * Mathf.PI * frequency * time) * fadeIn * fadeOut;
+            }
+
+            var clip = AudioClip.Create("WatermelonDirectionBeep", sampleCount, 1, sampleRate, false);
+            clip.SetData(samples, 0);
+            return clip;
         }
 
         private IEnumerator UpdateSpatialAnchor()
