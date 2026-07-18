@@ -17,6 +17,8 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         [SerializeField] private PassthroughCameraAccess m_cameraAccess;
         [SerializeField] private bool m_useFallbackDistanceOnRaycastMiss = true;
         [SerializeField, Min(0.5f)] private float m_raycastFallbackDistance = 4f;
+        [SerializeField] private bool m_ignoreDetectionsAboveHeadHeight = true;
+        [SerializeField, Min(0f)] private float m_headHeightTolerance = 0.05f;
 
         [SerializeField] private RectTransform m_detectionBoxPrefab;
         [Space(10)]
@@ -67,8 +69,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 return;
             }
 
-            OnObjectsDetected?.Invoke(detections.Count);
-
+            var drawnCount = 0;
             // Draw the bounding boxes
             for (var i = 0; i < detections.Count; i++)
             {
@@ -109,6 +110,11 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 // Calculate distance and center point first
                 float distance = Vector3.Distance(cameraPose.position, worldPos.Value);
                 var worldSpaceCenter = m_cameraAccess.ViewportPointToRay(normRect.center, cameraPose).GetPoint(distance);
+                if (ShouldIgnoreDetectionAboveHeadHeight(worldSpaceCenter, cameraPose))
+                {
+                    continue;
+                }
+
                 var normal = (worldSpaceCenter - cameraPose.position).normalized;
 
                 // Intersect corner rays with the plane perpendicular to the camera view
@@ -133,7 +139,16 @@ namespace PassthroughCameraSamples.MultiObjectDetection
                 boxRectTransform.SetPositionAndRotation(worldSpaceCenter, Quaternion.LookRotation(normal));
                 boxRectTransform.sizeDelta = size;
                 boxData.lastUpdateTime = Time.time;
+                drawnCount++;
             }
+
+            OnObjectsDetected?.Invoke(drawnCount);
+        }
+
+        private bool ShouldIgnoreDetectionAboveHeadHeight(Vector3 worldSpaceCenter, Pose cameraPose)
+        {
+            return m_ignoreDetectionsAboveHeadHeight &&
+                   worldSpaceCenter.y > cameraPose.position.y + m_headHeightTolerance;
         }
 
         private BoundingBoxData GetOrCreateBoundingBoxData(int classId, Vector3 worldSpaceCenter, Vector2 worldSpaceSize)
