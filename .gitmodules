@@ -4,3 +4,6 @@
 [submodule "web-compiler"]
 	path = web-compiler
 	url = https://github.com/scolor-dev/web-compiler
+[submodule "GestureGame"]
+	path = GestureGame
+	url = git@github.com:ruirui23/GestureGame.git
