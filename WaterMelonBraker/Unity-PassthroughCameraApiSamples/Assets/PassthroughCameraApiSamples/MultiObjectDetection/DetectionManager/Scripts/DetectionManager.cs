@@ -34,6 +34,10 @@ namespace PassthroughCameraSamples.MultiObjectDetection
         [SerializeField] private bool m_enableWatermelonDirectionSpeech = true;
         [SerializeField, Min(0.5f)] private float m_watermelonSpeechInterval = 1.5f;
         [SerializeField, Range(0.5f, 2f)] private float m_watermelonSpeechRate = 1.15f;
+        [SerializeField, Min(0.1f)] private float m_watermelonStopDistance = 1.2f;
+        [SerializeField, Min(0.01f)] private float m_watermelonStopBoxHeight = 0.7f;
+        [SerializeField, Range(5f, 60f)] private float m_watermelonStopMaxAngle = 30f;
+        [SerializeField] private string m_watermelonStopSpeechText = "止まってください";
         [SerializeField, Range(0.1f, 0.9f)] private float m_watermelonFrontBackThreshold = 0.35f;
         [SerializeField, Range(0.1f, 0.9f)] private float m_watermelonLeftRightThreshold = 0.35f;
         [Space(10)]
@@ -143,6 +147,23 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             var listenerTransform = GetListenerTransform();
             var listenerPosition = listenerTransform != null ? listenerTransform.position : transform.position;
             var direction = target.BoxRectTransform.position - listenerPosition;
+            var distanceSqr = GetHorizontalDistanceSqr(listenerPosition, target.BoxRectTransform.position);
+            var localDirection = listenerTransform != null ? listenerTransform.InverseTransformDirection(direction) : Vector3.zero;
+            if (ShouldStopForWatermelon(
+                    distanceSqr,
+                    target.BoxRectTransform.sizeDelta,
+                    localDirection,
+                    m_watermelonStopDistance,
+                    m_watermelonStopBoxHeight,
+                    m_watermelonStopMaxAngle))
+            {
+                m_watermelonAudioSource.transform.position = target.BoxRectTransform.position;
+                m_watermelonAudioSource.panStereo = GetStereoPanAssist(direction.normalized, listenerTransform);
+                SpeakWatermelonStop();
+                m_nextWatermelonBeepTime = Time.time + m_watermelonBeepInterval;
+                return;
+            }
+
             if (direction.sqrMagnitude < 0.0001f)
             {
                 direction = listenerTransform != null ? listenerTransform.forward : transform.forward;
@@ -215,6 +236,64 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             return Mathf.Clamp(localDirection.x, -1f, 1f) * m_watermelonStereoPanAssist;
         }
 
+        internal static bool IsWithinWatermelonStopDistance(float distanceSqr, float stopDistance)
+        {
+            return distanceSqr <= stopDistance * stopDistance;
+        }
+
+        internal static float GetHorizontalDistanceSqr(Vector3 from, Vector3 to)
+        {
+            var x = to.x - from.x;
+            var z = to.z - from.z;
+            return x * x + z * z;
+        }
+
+        internal static bool ShouldStopForWatermelon(
+            float distanceSqr,
+            Vector2 boxSize,
+            Vector3 localDirection,
+            float stopDistance,
+            float stopBoxHeight,
+            float stopMaxAngle)
+        {
+            return IsInWatermelonStopDirection(localDirection, stopMaxAngle) &&
+                   (IsWithinWatermelonStopDistance(distanceSqr, stopDistance) || boxSize.y >= stopBoxHeight);
+        }
+
+        internal static bool IsInWatermelonStopDirection(Vector3 localDirection, float stopMaxAngle)
+        {
+            if (localDirection.sqrMagnitude < 0.0001f || localDirection.z <= 0f)
+            {
+                return false;
+            }
+
+            var angle = Mathf.Atan2(Mathf.Abs(localDirection.x), localDirection.z) * Mathf.Rad2Deg;
+            return angle <= stopMaxAngle;
+        }
+
+        private bool SpeakWatermelonStop()
+        {
+            if (!m_enableWatermelonDirectionSpeech)
+            {
+                return false;
+            }
+
+            if (m_lastWatermelonDirectionName == m_watermelonStopSpeechText && Time.time < m_nextWatermelonSpeechTime)
+            {
+                return false;
+            }
+
+            if (TryPlayWatermelonDirectionVoice(m_watermelonStopSpeechText) ||
+                m_watermelonDirectionSpeech.Speak(m_watermelonStopSpeechText))
+            {
+                m_lastWatermelonDirectionName = m_watermelonStopSpeechText;
+                m_nextWatermelonSpeechTime = Time.time + m_watermelonSpeechInterval;
+                return true;
+            }
+
+            return false;
+        }
+
         private bool SpeakWatermelonDirection(Vector3 worldDirection, Transform listenerTransform)
         {
             if (!m_enableWatermelonDirectionSpeech || listenerTransform == null)
@@ -272,6 +351,7 @@ namespace PassthroughCameraSamples.MultiObjectDetection
             AddDirectionVoiceClip("右前", "front_right_voice");
             AddDirectionVoiceClip("左後ろ", "back_left_voice");
             AddDirectionVoiceClip("右後ろ", "back_right_voice");
+            AddDirectionVoiceClip(m_watermelonStopSpeechText, "stop_voice");
 
             void AddDirectionVoiceClip(string directionName, string resourceName)
             {
