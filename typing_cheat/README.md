@@ -22,6 +22,7 @@ Repository settings → Pages → Build and deployment で Source を `Deploy fr
 
 - コピー用ページ: `https://kou050223.github.io/undoukai/typing_cheat/`
 - 直接URL: `https://kou050223.github.io/undoukai/typing_cheat/neon_typing_auto.user.js`
+- カスタムドメイン: `https://undou.uomi.dev/typing_cheat/`
 
 ## 使い方
 
