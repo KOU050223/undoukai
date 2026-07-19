@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Neon Typing Auto (学習用)
 // @namespace    https://github.com/KOU050223/undoukai
-// @version      0.1.0
+// @version      0.1.1
 // @description  otonasi-muonn.github.io/typing_game (ネオンタイピング) を自動で完走させる学習用ツール。window keydown を高速dispatch。
 // @match        https://otonasi-muonn.github.io/typing_game/*
 // @run-at       document-idle
@@ -28,7 +28,7 @@
 
   const DEFAULT_INTERVAL_MS = 0;
   const MAX_KEYS_PER_TICK = 200;
-  const AUTOSTART = false;
+  const AUTOSTART = new W.URLSearchParams(W.location.search).get('typingAutoStart') === '1';
 
   function dispatchChar(ch) {
     const init = {

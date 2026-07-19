@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>Neon Typing Auto test</title>
+</head>
+<body>
+  <pre id="result">RUNNING</pre>
+  <script>
+    window.__intervalStarts = 0;
+    window.setInterval = () => ++window.__intervalStarts;
+    window.clearInterval = () => {};
+  </script>
+  <script src="./neon_typing_auto.user.js"></script>
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const expected = Number(new URLSearchParams(location.search).get('expectedStarts'));
+      const actual = window.__intervalStarts;
+      const scriptLoaded = document.body.textContent.includes('Neon Typing Auto');
+      document.getElementById('result').textContent = scriptLoaded && actual === expected
+        ? `PASS: interval starts = ${actual}`
+        : `FAIL: scriptLoaded=${scriptLoaded}, expected ${expected}, got ${actual}`;
+    });
+  </script>
+</body>
+</html>
