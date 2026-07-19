@@ -30,6 +30,18 @@ test('モバイル幅で横方向にはみ出さない', async ({ page }) => {
   expect(overflow).toBeLessThanOrEqual(0);
 });
 
+test('モバイル幅の読み取り結果が横方向にはみ出さない', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
+  await page.locator('#image-input').setInputFiles(problemPath);
+  await expect(page.locator('#corner-loading')).toBeHidden({ timeout: 60_000 });
+  await page.getByRole('button', { name: '解析する' }).click();
+  await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
+
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(overflow).toBeLessThanOrEqual(0);
+});
+
 test('実問題画像を3行のひらがなへ変換する', async ({ page }) => {
   await page.goto('/');
   await page.locator('#image-input').setInputFiles(problemPath);
@@ -73,3 +85,34 @@ for (const rotation of [1, -1] as const) {
     await expect(page.locator('#output-text')).toHaveValue('ぱんはぱんでも\nたべられない\nぱんは？');
   });
 }
+
+test('上下が逆の画像を利用者が入れ替えて再解析できる', async ({ page }) => {
+  await page.goto('/');
+  const upsideDownImage = await page.evaluate(async () => {
+    const image = new Image();
+    image.src = '/mondai.png';
+    await image.decode();
+    const canvas = document.createElement('canvas');
+    canvas.width = image.naturalWidth;
+    canvas.height = image.naturalHeight;
+    const context = canvas.getContext('2d')!;
+    context.translate(canvas.width, canvas.height);
+    context.rotate(Math.PI);
+    context.drawImage(image, 0, 0);
+    return canvas.toDataURL('image/png').split(',')[1];
+  });
+
+  await page.locator('#image-input').setInputFiles({
+    name: 'mondai-upside-down.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from(upsideDownImage, 'base64'),
+  });
+  await expect(page.locator('#corner-loading')).toBeHidden({ timeout: 60_000 });
+  await page.getByRole('button', { name: '解析する' }).click();
+  await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
+  await expect(page.locator('#output-text')).not.toHaveValue('ぱんはぱんでも\nたべられない\nぱんは？');
+
+  await page.getByRole('button', { name: '上下を入れ替えて再解析' }).click();
+  await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
+  await expect(page.locator('#output-text')).toHaveValue('ぱんはぱんでも\nたべられない\nぱんは？');
+});

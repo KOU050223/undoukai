@@ -5,6 +5,7 @@ import {
   ImagePlus,
   MousePointerClick,
   Plus,
+  RotateCcw,
   ScanLine,
   ShieldCheck,
   Sparkles,
@@ -19,12 +20,13 @@ import { ALL_KANA, applyModifier, tokensToText, type DetectedToken } from './dom
 import {
   detectDocumentCorners,
   fileToCanvas,
+  recognizeDocument,
   recognizeOrientedDocument,
   warpDocument,
   type Point,
 } from './vision/engine';
 
-const icons = { Camera, Copy, Crop, ImagePlus, MousePointerClick, Plus, ScanLine, ShieldCheck, Sparkles, Table2, Trash2, X, ArrowLeft };
+const icons = { Camera, Copy, Crop, ImagePlus, MousePointerClick, Plus, RotateCcw, ScanLine, ShieldCheck, Sparkles, Table2, Trash2, X, ArrowLeft };
 createIcons({ icons });
 
 const uploadPhase = element<HTMLElement>('upload-phase');
@@ -35,6 +37,7 @@ const cropCanvas = element<HTMLCanvasElement>('crop-canvas');
 const resultCanvas = element<HTMLCanvasElement>('result-canvas');
 const cornerLoading = element<HTMLElement>('corner-loading');
 const analysisLoading = element<HTMLElement>('analysis-loading');
+const flipOrientationButton = element<HTMLButtonElement>('flip-orientation-button');
 const outputText = element<HTMLTextAreaElement>('output-text');
 const tokenEditor = element<HTMLElement>('token-editor');
 const emptyEditor = element<HTMLElement>('empty-editor');
@@ -93,6 +96,30 @@ element<HTMLButtonElement>('recrop-button').addEventListener('click', () => {
   operationGeneration += 1;
   setPhase('crop');
   drawCropEditor();
+});
+
+flipOrientationButton.addEventListener('click', async () => {
+  if (!correctedCanvas) return;
+  const generation = ++operationGeneration;
+  analysisLoading.hidden = false;
+  flipOrientationButton.disabled = true;
+  try {
+    const nextCanvas = rotateCanvas180(correctedCanvas);
+    const nextTokens = await recognizeDocument(nextCanvas);
+    if (generation !== operationGeneration) return;
+    correctedCanvas = nextCanvas;
+    tokens = nextTokens;
+    selectedTokenId = tokens[0]?.id ?? null;
+    renderResult();
+  } catch (error) {
+    if (generation !== operationGeneration) return;
+    showToast(error instanceof Error ? error.message : '向きを変更できませんでした。', true);
+  } finally {
+    if (generation === operationGeneration) {
+      analysisLoading.hidden = true;
+      flipOrientationButton.disabled = false;
+    }
+  }
 });
 
 element<HTMLButtonElement>('analyze-button').addEventListener('click', async () => {
@@ -387,6 +414,17 @@ function copyCanvas(source: HTMLCanvasElement, destination: HTMLCanvasElement) {
   destination.width = source.width;
   destination.height = source.height;
   destination.getContext('2d')!.drawImage(source, 0, 0);
+}
+
+function rotateCanvas180(source: HTMLCanvasElement) {
+  const output = document.createElement('canvas');
+  output.width = source.width;
+  output.height = source.height;
+  const context = output.getContext('2d')!;
+  context.translate(output.width, output.height);
+  context.rotate(Math.PI);
+  context.drawImage(source, 0, 0);
+  return output;
 }
 
 function canvasPoint(event: PointerEvent | MouseEvent, canvas: HTMLCanvasElement): Point {

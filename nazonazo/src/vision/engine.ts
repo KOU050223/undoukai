@@ -172,7 +172,7 @@ export async function recognizeDocument(canvas: HTMLCanvasElement): Promise<Dete
   }
 
   const grayRegion = grayBounds.length >= 3
-    ? denseRegion(grayBounds, canvas.width * 0.15, canvas.height * 0.22)
+    ? denseRegion(grayBounds, canvas.width * 0.15, canvas.height * 0.55)
     : null;
   const grayScale = median(grayBounds.map((bounds) => Math.max(bounds.width, bounds.height))) || canvas.height * 0.08;
   const symbolRegion = grayRegion
@@ -183,18 +183,26 @@ export async function recognizeDocument(canvas: HTMLCanvasElement): Promise<Dete
   const grayGroups = mergeNearbyBounds(grayBounds, 0.25);
 
   const typicalDarkArea = median(darkBounds.map((bounds) => bounds.width * bounds.height));
-  const anchors = darkBounds.filter((bounds) => {
+  const anchorCandidates = darkBounds.filter((bounds) => {
     const area = bounds.width * bounds.height;
     return area >= typicalDarkArea * 0.58 && bounds.width >= Math.sqrt(typicalDarkArea) * 0.65;
   });
+  const anchors = anchorCandidates.filter((candidate) => !anchorCandidates.some((other) => (
+    other !== candidate
+    && other.width * other.height > candidate.width * candidate.height * 1.8
+    && centerInside(candidate, other)
+  )));
+  const foregroundCandidates = darkBounds.filter((candidate) => (
+    anchors.includes(candidate) || !anchors.some((anchor) => centerInside(candidate, anchor))
+  ));
   const anchorBounds = anchors.map((anchor) => {
-    const relatedGray = grayGroups.filter((background) => nearestBounds(background, anchors) === anchor);
+    const relatedGray = grayGroups.filter((background) => nearestBounds(background, foregroundCandidates) === anchor);
     return relatedGray.reduce(unionBounds, anchor);
   });
   const leftovers = darkBounds.filter((bounds) => !anchors.includes(bounds));
   const extraBounds = mergeVerticalParts(leftovers)
     .filter((bounds) => bounds.width * bounds.height >= typicalDarkArea * 0.045)
-    .filter((bounds) => bounds.width / bounds.height < 1.8);
+    .filter((bounds) => bounds.width / bounds.height < 3.5);
   const candidates = [
     ...anchorBounds.map((bounds) => ({ bounds, anchor: true })),
     ...extraBounds.map((bounds) => ({ bounds, anchor: false })),
@@ -219,7 +227,13 @@ export async function recognizeDocument(canvas: HTMLCanvasElement): Promise<Dete
   };
   const extraTokens = candidates
     .filter(({ anchor }) => !anchor)
-    .map(({ bounds }, index) => classifyBounds(bounds, index));
+    .map(({ bounds }, index) => classifyBounds(bounds, index))
+    .map((token) => {
+      const isStandalone = !anchorBounds.some((anchor) => centerInside(token.bounds, anchor));
+      const isSmall = token.bounds.width * token.bounds.height < typicalDarkArea * 0.42;
+      if (token.kind !== 'glyph' || !token.kana || !isStandalone || !isSmall) return token;
+      return { ...token, kana: smallKana(token.kana) };
+    });
   const modifierBounds = extraTokens.filter(({ kind }) => kind === 'modifier').map(({ bounds }) => bounds);
   const anchorTokens = candidates
     .filter(({ anchor }) => anchor)
@@ -229,7 +243,12 @@ export async function recognizeDocument(canvas: HTMLCanvasElement): Promise<Dete
     ...extraTokens.map((token) => ({ token, anchor: false })),
   ];
   const kept = classified
-    .filter(({ token, anchor }) => anchor || token.kind === 'modifier' || token.kind === 'question')
+    .filter(({ token, anchor }) => (
+      anchor
+      || token.kind === 'modifier'
+      || token.kind === 'question'
+      || (token.kind === 'glyph' && !anchorBounds.some((bounds) => centerInside(token.bounds, bounds)))
+    ))
     .map(({ token }) => token);
   return assignTokenLines(kept);
 }
@@ -267,6 +286,14 @@ function recognitionScore(tokens: DetectedToken[]) {
   return tokens.reduce((score, token) => (
     token.kind === 'unknown' ? score : score + 1 + token.confidence
   ), 0);
+}
+
+function smallKana(kana: string) {
+  const replacements: Record<string, string> = {
+    あ: 'ぁ', い: 'ぃ', う: 'ぅ', え: 'ぇ', お: 'ぉ',
+    つ: 'っ', や: 'ゃ', ゆ: 'ゅ', よ: 'ょ', わ: 'ゎ',
+  };
+  return replacements[kana] ?? kana;
 }
 
 function classifyToken(
