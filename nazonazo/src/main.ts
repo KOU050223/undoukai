@@ -5,7 +5,7 @@ import {
   ImagePlus,
   MousePointerClick,
   Plus,
-  RotateCcw,
+  RotateCw,
   ScanLine,
   ShieldCheck,
   Sparkles,
@@ -26,7 +26,7 @@ import {
   type Point,
 } from './vision/engine';
 
-const icons = { Camera, Copy, Crop, ImagePlus, MousePointerClick, Plus, RotateCcw, ScanLine, ShieldCheck, Sparkles, Table2, Trash2, X, ArrowLeft };
+const icons = { Camera, Copy, Crop, ImagePlus, MousePointerClick, Plus, RotateCw, ScanLine, ShieldCheck, Sparkles, Table2, Trash2, X, ArrowLeft };
 createIcons({ icons });
 
 const uploadPhase = element<HTMLElement>('upload-phase');
@@ -37,7 +37,7 @@ const cropCanvas = element<HTMLCanvasElement>('crop-canvas');
 const resultCanvas = element<HTMLCanvasElement>('result-canvas');
 const cornerLoading = element<HTMLElement>('corner-loading');
 const analysisLoading = element<HTMLElement>('analysis-loading');
-const flipOrientationButton = element<HTMLButtonElement>('flip-orientation-button');
+const rotateOrientationButton = element<HTMLButtonElement>('rotate-orientation-button');
 const outputText = element<HTMLTextAreaElement>('output-text');
 const tokenEditor = element<HTMLElement>('token-editor');
 const emptyEditor = element<HTMLElement>('empty-editor');
@@ -98,13 +98,13 @@ element<HTMLButtonElement>('recrop-button').addEventListener('click', () => {
   drawCropEditor();
 });
 
-flipOrientationButton.addEventListener('click', async () => {
+rotateOrientationButton.addEventListener('click', async () => {
   if (!correctedCanvas) return;
   const generation = ++operationGeneration;
   analysisLoading.hidden = false;
-  flipOrientationButton.disabled = true;
+  rotateOrientationButton.disabled = true;
   try {
-    const nextCanvas = rotateCanvas180(correctedCanvas);
+    const nextCanvas = rotateCanvas90(correctedCanvas);
     const nextTokens = await recognizeDocument(nextCanvas);
     if (generation !== operationGeneration) return;
     correctedCanvas = nextCanvas;
@@ -117,7 +117,7 @@ flipOrientationButton.addEventListener('click', async () => {
   } finally {
     if (generation === operationGeneration) {
       analysisLoading.hidden = true;
-      flipOrientationButton.disabled = false;
+      rotateOrientationButton.disabled = false;
     }
   }
 });
@@ -416,13 +416,13 @@ function copyCanvas(source: HTMLCanvasElement, destination: HTMLCanvasElement) {
   destination.getContext('2d')!.drawImage(source, 0, 0);
 }
 
-function rotateCanvas180(source: HTMLCanvasElement) {
+function rotateCanvas90(source: HTMLCanvasElement) {
   const output = document.createElement('canvas');
-  output.width = source.width;
-  output.height = source.height;
+  output.width = source.height;
+  output.height = source.width;
   const context = output.getContext('2d')!;
-  context.translate(output.width, output.height);
-  context.rotate(Math.PI);
+  context.translate(output.width, 0);
+  context.rotate(Math.PI / 2);
   context.drawImage(source, 0, 0);
   return output;
 }

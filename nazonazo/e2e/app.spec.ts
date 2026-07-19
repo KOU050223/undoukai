@@ -112,7 +112,9 @@ test('上下が逆の画像を利用者が入れ替えて再解析できる', as
   await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
   await expect(page.locator('#output-text')).not.toHaveValue('ぱんはぱんでも\nたべられない\nぱんは？');
 
-  await page.getByRole('button', { name: '上下を入れ替えて再解析' }).click();
+  await page.getByRole('button', { name: '90°回転して再解析' }).click();
+  await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
+  await page.getByRole('button', { name: '90°回転して再解析' }).click();
   await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
   await expect(page.locator('#output-text')).toHaveValue('ぱんはぱんでも\nたべられない\nぱんは？');
 });
