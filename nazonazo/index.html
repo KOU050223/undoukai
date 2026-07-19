@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta name="theme-color" content="#f7f7f4" />
+    <meta name="description" content="写真に写った独自記号をひらがなへ変換する端末内画像解析ツール" />
+    <title>ナゾヨミ</title>
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <a class="brand" href="./" aria-label="ナゾヨミの最初の画面へ">
+          <span class="brand-mark" aria-hidden="true">ナ</span>
+          <span>ナゾヨミ</span>
+        </a>
+        <button class="icon-button" id="reference-open" type="button" title="対応表を見る" aria-label="対応表を見る">
+          <i data-lucide="table-2"></i>
+        </button>
+      </header>
+
+      <main>
+        <section class="phase phase-upload" id="upload-phase">
+          <div class="section-heading">
+            <p class="step-label">STEP 1</p>
+            <h1>記号の画像を読み取る</h1>
+            <p>問題文が大きく、明るく写った画像を選択します。</p>
+          </div>
+
+          <label class="capture-zone" for="image-input">
+            <span class="capture-icon"><i data-lucide="scan-line"></i></span>
+            <strong>撮影または画像を選択</strong>
+            <span>JPEG / PNG / WebP</span>
+            <input id="image-input" type="file" accept="image/jpeg,image/png,image/webp,image/*" capture="environment" />
+          </label>
+          <div class="privacy-note">
+            <i data-lucide="shield-check"></i>
+            <span>画像はこの端末内だけで処理されます</span>
+          </div>
+        </section>
+
+        <section class="phase" id="crop-phase" hidden>
+          <div class="section-heading compact">
+            <p class="step-label">STEP 2</p>
+            <h1>読み取る範囲を合わせる</h1>
+            <p>4つの角を問題文の外側に合わせます。</p>
+          </div>
+          <div class="canvas-stage crop-stage" id="crop-stage">
+            <canvas id="crop-canvas" tabindex="0" aria-label="読み取り範囲のプレビュー"></canvas>
+            <div class="processing-cover" id="corner-loading" hidden>
+              <span class="spinner"></span><span>範囲を検出中</span>
+            </div>
+          </div>
+          <div class="corner-controls" role="group" aria-label="調整する角">
+            <button type="button" class="corner-button active" data-corner="0" aria-label="左上の角。矢印キーで移動">左上</button>
+            <button type="button" class="corner-button" data-corner="1" aria-label="右上の角。矢印キーで移動">右上</button>
+            <button type="button" class="corner-button" data-corner="2" aria-label="右下の角。矢印キーで移動">右下</button>
+            <button type="button" class="corner-button" data-corner="3" aria-label="左下の角。矢印キーで移動">左下</button>
+          </div>
+          <div class="action-bar">
+            <button class="button secondary" id="crop-back" type="button"><i data-lucide="arrow-left"></i>戻る</button>
+            <button class="button primary" id="analyze-button" type="button"><i data-lucide="sparkles"></i>解析する</button>
+          </div>
+        </section>
+
+        <section class="phase" id="result-phase" hidden>
+          <div class="section-heading compact result-heading">
+            <div>
+              <p class="step-label">STEP 3</p>
+              <h1>読み取り結果</h1>
+            </div>
+            <button class="button secondary small" id="recrop-button" type="button"><i data-lucide="crop"></i>範囲を直す</button>
+          </div>
+
+          <div class="result-layout">
+            <div class="canvas-stage result-stage">
+              <canvas id="result-canvas"></canvas>
+              <div class="processing-cover" id="analysis-loading" hidden>
+                <span class="spinner"></span><span>記号を解析中</span>
+              </div>
+            </div>
+
+            <aside class="editor-panel" aria-label="認識文字の編集">
+              <div class="token-list" id="token-list" role="listbox" aria-label="検出した記号"></div>
+              <div id="empty-editor" class="empty-editor">
+                <i data-lucide="mouse-pointer-click"></i>
+                <p>画像上の文字を選択</p>
+              </div>
+              <div id="token-editor" hidden>
+                <div class="editor-title-row">
+                  <div>
+                    <span class="field-label">選択中</span>
+                    <strong class="selected-kana" id="selected-kana">―</strong>
+                  </div>
+                  <button class="icon-button danger" id="delete-token" type="button" title="文字を削除" aria-label="文字を削除"><i data-lucide="trash-2"></i></button>
+                </div>
+
+                <div class="candidate-section" id="candidate-section">
+                  <span class="field-label">認識候補</span>
+                  <div class="candidate-row" id="candidate-row"></div>
+                </div>
+
+                <div class="modifier-row">
+                  <button class="choice-button" id="dakuten-button" type="button">゛ 濁点</button>
+                  <button class="choice-button" id="handakuten-button" type="button">゜ 半濁点</button>
+                  <button class="choice-button" id="question-button" type="button">？</button>
+                </div>
+
+                <details class="kana-picker">
+                  <summary>すべてのかなから選ぶ</summary>
+                  <div class="kana-grid" id="kana-grid"></div>
+                </details>
+
+                <div class="insert-row">
+                  <button class="button ghost small" id="insert-before" type="button"><i data-lucide="plus"></i>前に追加</button>
+                  <button class="button ghost small" id="insert-after" type="button"><i data-lucide="plus"></i>後に追加</button>
+                </div>
+              </div>
+            </aside>
+          </div>
+
+          <div class="output-band">
+            <label for="output-text">変換したひらがな</label>
+            <textarea id="output-text" rows="4" spellcheck="false" aria-label="変換したひらがな"></textarea>
+            <div class="output-actions">
+              <span id="confidence-summary"></span>
+              <button class="button primary" id="copy-button" type="button"><i data-lucide="copy"></i>コピー</button>
+            </div>
+          </div>
+
+          <button class="button secondary new-image" id="new-image-button" type="button"><i data-lucide="image-plus"></i>別の画像を選ぶ</button>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="reference-dialog" class="reference-dialog" aria-labelledby="reference-title">
+      <div class="dialog-header">
+        <h2 id="reference-title">独自言語の対応表</h2>
+        <button class="icon-button" id="reference-close" type="button" title="閉じる" aria-label="閉じる"><i data-lucide="x"></i></button>
+      </div>
+      <img src="./nazonazo_cheat.png" alt="独自記号と50音の対応表" />
+    </dialog>
+
+    <div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
