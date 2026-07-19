@@ -31,13 +31,14 @@ Repository settings → Pages → Build and deployment で Source を `Deploy fr
 3. **STOP** で即停止
 4. 「間隔」は 1キーあたりの遅延（ms）。`0` にすると理論最速だが描画がスキップされることがある。既定は `8ms`。
 
-### ブックマークから1クリックで開始（ネオンタイピング）
+### Tampermonkeyなしで開始（ネオンタイピング）
 
-1. 配布ページの「ネオンタイピングを開始」をブックマークバーへドラッグする
-2. 作成したブックマークをクリックする
-3. `?typingAutoStart=1` 付きでゲームが開き、自動的に開始・完走する
+1. 配布ページに「準備OK」と表示されたら、「★ 平均180をブックマークに追加」をブックマークバーへドラッグする
+2. ネオンタイピングを開く
+3. ゲーム画面で、作成した「★ 平均180をブックマークに追加」をクリックする
+4. ゲーム開始から完走まで自動で進む
 
-Tampermonkey に `neon_typing_auto.user.js` をインストール済みであることが前提です。
+追加の拡張機能やコードの貼り付けは不要です。ブラウザの制限上、ゲームを開く操作と自動実行は別々に行います。
 
 ## 実測
 
@@ -49,6 +50,7 @@ Tampermonkey に `neon_typing_auto.user.js` をインストール済みである
 
 - `mytyping_auto.user.js` — myTyping (typing.twi1.me) 用
 - `neon_typing_auto.user.js` — ネオンタイピング (otonasi-muonn.github.io/typing_game) 用
+- `neon_typing_bookmarklet.js` — Tampermonkey不要のネオンタイピング用ブックマークレット
 
 ---
 

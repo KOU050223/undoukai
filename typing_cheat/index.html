@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Neon Typing Auto userscript</title>
+  <title>Neon Typing Auto ブックマークレット</title>
   <style>
     :root {
       color-scheme: dark;
@@ -78,7 +78,8 @@
       white-space: nowrap;
     }
 
-    button.primary {
+    button.primary,
+    a.button.primary {
       border-color: var(--accent);
       background: var(--accent);
       color: var(--accent-ink);
@@ -92,18 +93,18 @@
       font-size: 14px;
     }
 
-    pre {
-      min-height: 60vh;
-      margin: 0;
-      padding: 18px;
-      overflow: auto;
-      border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #0b0d10;
-      color: #d9fff9;
-      font: 13px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      tab-size: 2;
-      white-space: pre;
+    .bookmark-guide {
+      margin: 0 0 16px;
+      padding: 12px 14px;
+      border: 1px solid var(--accent);
+      border-radius: 6px;
+      background: rgba(45, 212, 191, .08);
+      color: var(--text);
+    }
+
+    .bookmark-guide ol {
+      margin: 8px 0 0;
+      padding-left: 22px;
     }
 
     @media (max-width: 720px) {
@@ -124,56 +125,60 @@
       <div>
         <h1>Neon Typing Auto</h1>
         <div class="status">https://otonasi-muonn.github.io/typing_game/</div>
-        <p>Tampermonkey に貼り付ける userscript</p>
+        <p>拡張機能・貼り付け作業なしで使えるブックマークレット</p>
       </div>
       <div class="actions">
         <a
-          id="autostart-bookmark"
-          class="button"
-          href="https://otonasi-muonn.github.io/typing_game/?typingAutoStart=1"
-          title="ブックマークバーへドラッグしてください"
-        >平均180：ネオンタイピングを開始</a>
-        <button id="copy" class="primary" type="button">コピー</button>
-        <a class="button" href="./neon_typing_auto.user.js">直接開く</a>
-        <a class="button" href="https://github.com/KOU050223/undoukai/blob/main/typing_cheat/neon_typing_auto.user.js">GitHub</a>
+          id="bookmark-add"
+          class="button primary"
+          href="#bookmark-help"
+          draggable="false"
+          aria-controls="bookmark-help"
+          title="ブックマークバーへドラッグ"
+        >★ 平均180をブックマークに追加</a>
+        <a class="button" href="https://otonasi-muonn.github.io/typing_game/" target="_blank" rel="noopener">ゲームを開く</a>
+        <a class="button" href="https://github.com/KOU050223/undoukai/blob/main/typing_cheat/neon_typing_bookmarklet.js">GitHub</a>
       </div>
     </header>
 
-    <div id="status" class="status">読み込み中...</div>
-    <pre id="code" aria-label="neon_typing_auto.user.js"></pre>
+    <div id="bookmark-help" class="bookmark-guide">
+      <strong>使い方</strong>
+      <ol>
+        <li>「準備OK」と表示されたら、「★ 平均180をブックマークに追加」をブックマークバーへドラッグ</li>
+        <li>「ゲームを開く」をクリック</li>
+        <li>ゲーム画面で、追加した「★ 平均180をブックマークに追加」をクリック</li>
+      </ol>
+      <p>ブックマークバーが見えない場合、Chromeでは ⌘⇧B で表示できます。</p>
+    </div>
+    <div id="status" class="status">ブックマークを準備中...</div>
   </main>
 
   <script>
-    const scriptPath = './neon_typing_auto.user.js';
-    const codeEl = document.getElementById('code');
+    const scriptPath = './neon_typing_bookmarklet.js';
     const statusEl = document.getElementById('status');
-    const copyBtn = document.getElementById('copy');
-    let source = '';
+    const bookmarkLink = document.getElementById('bookmark-add');
+    const bookmarkHelp = document.getElementById('bookmark-help');
 
-    async function loadSource() {
+    async function prepareBookmarklet() {
       try {
         const response = await fetch(scriptPath, { cache: 'no-store' });
         if (!response.ok) throw new Error(`HTTP ${response.status}`);
-        source = await response.text();
-        codeEl.textContent = source;
-        statusEl.textContent = `${scriptPath} を表示中`;
-      } catch (error) {
-        statusEl.textContent = '読み込みに失敗しました。「直接開く」から開いてください。';
-        codeEl.textContent = String(error);
+        const source = (await response.text()).replace(/\s+/g, ' ').trim();
+        bookmarkLink.href = `javascript:${source}`;
+        bookmarkLink.draggable = true;
+        statusEl.textContent = '準備OK：緑のボタンをブックマークバーへドラッグしてください';
+      } catch {
+        statusEl.textContent = 'ブックマークの準備に失敗しました。ページを再読み込みしてください。';
       }
     }
 
-    copyBtn.addEventListener('click', async () => {
-      if (!source) return;
-      try {
-        await navigator.clipboard.writeText(source);
-        statusEl.textContent = 'コピーしました';
-      } catch {
-        statusEl.textContent = 'コピーできませんでした。コードを選択してコピーしてください。';
-      }
+    bookmarkLink.addEventListener('click', (event) => {
+      event.preventDefault();
+      bookmarkHelp.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      statusEl.textContent = 'クリックではなく、緑のボタンをブックマークバーへドラッグしてください';
     });
 
-    loadSource();
+    prepareBookmarklet();
   </script>
 </body>
 </html>
