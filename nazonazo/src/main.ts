@@ -19,7 +19,7 @@ import { ALL_KANA, applyModifier, tokensToText, type DetectedToken } from './dom
 import {
   detectDocumentCorners,
   fileToCanvas,
-  recognizeDocument,
+  recognizeOrientedDocument,
   warpDocument,
   type Point,
 } from './vision/engine';
@@ -107,9 +107,9 @@ element<HTMLButtonElement>('analyze-button').addEventListener('click', async () 
   setPhase('result');
   analysisLoading.hidden = false;
   try {
-    const nextCanvas = await warpDocument(sourceCanvas, corners);
+    const warpedCanvas = await warpDocument(sourceCanvas, corners);
     if (generation !== operationGeneration) return;
-    const nextTokens = await recognizeDocument(nextCanvas);
+    const { canvas: nextCanvas, tokens: nextTokens } = await recognizeOrientedDocument(warpedCanvas);
     if (generation !== operationGeneration) return;
     correctedCanvas = nextCanvas;
     tokens = nextTokens;

@@ -38,3 +38,38 @@ test('実問題画像を3行のひらがなへ変換する', async ({ page }) =>
   await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
   await expect(page.locator('#output-text')).toHaveValue('ぱんはぱんでも\nたべられない\nぱんは？');
 });
+
+for (const rotation of [1, -1] as const) {
+  const direction = rotation === 1 ? '右' : '左';
+  test(`${direction}へ90度回転して保存された実問題画像も3行のひらがなへ変換する`, async ({ page }) => {
+    await page.goto('/');
+    const rotatedImage = await page.evaluate(async (quarterTurn) => {
+      const image = new Image();
+      image.src = '/mondai.png';
+      await image.decode();
+      const canvas = document.createElement('canvas');
+      canvas.width = image.naturalHeight;
+      canvas.height = image.naturalWidth;
+      const context = canvas.getContext('2d')!;
+      if (quarterTurn === 1) {
+        context.translate(canvas.width, 0);
+        context.rotate(Math.PI / 2);
+      } else {
+        context.translate(0, canvas.height);
+        context.rotate(-Math.PI / 2);
+      }
+      context.drawImage(image, 0, 0);
+      return canvas.toDataURL('image/png').split(',')[1];
+    }, rotation);
+
+    await page.locator('#image-input').setInputFiles({
+      name: `mondai-portrait-${direction}.png`,
+      mimeType: 'image/png',
+      buffer: Buffer.from(rotatedImage, 'base64'),
+    });
+    await expect(page.locator('#corner-loading')).toBeHidden({ timeout: 60_000 });
+    await page.getByRole('button', { name: '解析する' }).click();
+    await expect(page.locator('#analysis-loading')).toBeHidden({ timeout: 90_000 });
+    await expect(page.locator('#output-text')).toHaveValue('ぱんはぱんでも\nたべられない\nぱんは？');
+  });
+}

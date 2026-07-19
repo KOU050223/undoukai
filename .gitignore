@@ -1,4 +1,8 @@
 .DS_Store
+**/node_modules/
+**/dist/
+**/*.tsbuildinfo
+.playwright-cli/
 
 # Local backup of nested repositories that were absorbed into this repo.
 .git.disabled-local-backup/

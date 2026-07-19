@@ -234,6 +234,41 @@ export async function recognizeDocument(canvas: HTMLCanvasElement): Promise<Dete
   return assignTokenLines(kept);
 }
 
+export async function recognizeOrientedDocument(canvas: HTMLCanvasElement) {
+  if (canvas.width >= canvas.height) {
+    return { canvas, tokens: await recognizeDocument(canvas) };
+  }
+
+  const candidates = [rotateCanvas(canvas, -1), rotateCanvas(canvas, 1)];
+  const results = [];
+  for (const candidate of candidates) {
+    results.push({ canvas: candidate, tokens: await recognizeDocument(candidate) });
+  }
+  return results.sort((a, b) => recognitionScore(b.tokens) - recognitionScore(a.tokens))[0];
+}
+
+function rotateCanvas(source: HTMLCanvasElement, quarterTurns: -1 | 1) {
+  const output = document.createElement('canvas');
+  output.width = source.height;
+  output.height = source.width;
+  const context = output.getContext('2d')!;
+  if (quarterTurns === 1) {
+    context.translate(output.width, 0);
+    context.rotate(Math.PI / 2);
+  } else {
+    context.translate(0, output.height);
+    context.rotate(-Math.PI / 2);
+  }
+  context.drawImage(source, 0, 0);
+  return output;
+}
+
+function recognitionScore(tokens: DetectedToken[]) {
+  return tokens.reduce((score, token) => (
+    token.kind === 'unknown' ? score : score + 1 + token.confidence
+  ), 0);
+}
+
 function classifyToken(
   image: ImageData,
   bounds: Bounds,
